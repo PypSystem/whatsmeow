@@ -444,6 +444,17 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	resp.Timestamp = ag.UnixTime("t")
 	if errorCode := ag.Int("error"); errorCode != 0 {
 		err = fmt.Errorf("%w %d", ErrServerReturnedError, errorCode)
+		// Um ack de erro (ex.: 400 durante a migração PN<->LID) normalmente
+		// indica device-list/identidade defasada. Sem invalidar o cache aqui,
+		// GetUserDevices continua devolvendo a lista velha e todo reenvio
+		// reproduz o mesmo erro. Espelha a invalidação do phash abaixo para que
+		// o próximo envio seja obrigado a refazer o USync.
+		switch to.Server {
+		case types.DefaultUserServer, types.HiddenUserServer, types.BotServer, types.HostedServer, types.HostedLIDServer:
+			cli.userDevicesCacheLock.Lock()
+			delete(cli.userDevicesCache, to)
+			cli.userDevicesCacheLock.Unlock()
+		}
 	}
 	expectedPHash := ag.OptionalString("phash")
 	if len(expectedPHash) > 0 && phash != expectedPHash {

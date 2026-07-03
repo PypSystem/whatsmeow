@@ -455,6 +455,25 @@ func (cli *Client) GetUserDevicesContext(ctx context.Context, jids []types.JID) 
 	return cli.GetUserDevices(ctx, jids)
 }
 
+// EvictUserDevicesCache removes the cached device list for the given JIDs so that
+// the next GetUserDevices call is forced to re-query the server (USync) instead of
+// returning a possibly stale list. Useful for recovering from send failures caused
+// by device-list/LID drift: evict the recipient (both PN and LID forms) and retry.
+// JIDs are normalized to their non-AD form, matching how the cache is keyed.
+func (cli *Client) EvictUserDevicesCache(jids ...types.JID) {
+	if cli == nil {
+		return
+	}
+	cli.userDevicesCacheLock.Lock()
+	defer cli.userDevicesCacheLock.Unlock()
+	for _, jid := range jids {
+		if jid.IsEmpty() {
+			continue
+		}
+		delete(cli.userDevicesCache, jid.ToNonAD())
+	}
+}
+
 // GetUserDevices gets the list of devices that the given user has. The input should be a list of
 // regular JIDs, and the output will be a list of AD JIDs. The local device will not be included in
 // the output even if the user's JID is included in the input. All other devices will be included.
